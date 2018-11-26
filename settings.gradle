@@ -1,0 +1,4 @@
+rootProject.name = 'sfnn'
+
+include 'prj:sfnn-data-model'
+findProject(':prj:sfnn-data-model')?.name = 'sfnn-data-model'

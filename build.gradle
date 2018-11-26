@@ -1,0 +1,94 @@
+buildscript {
+    repositories {
+        maven {
+            url "http://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath "org.jfrog.buildinfo:build-info-extractor-gradle:latest.release"
+    }
+}
+apply plugin: "com.jfrog.artifactory"
+
+allprojects {
+    apply plugin: 'com.jfrog.artifactory'
+    artifactoryPublish.skip = true
+
+    ext {
+        buildIsTeamCity = project.hasProperty('teamcity')
+        buildNumber = buildIsTeamCity ? project.teamcity["build.number"] : '1.0-SNAPSHOT'
+        buildVcsNumber = buildIsTeamCity ? project.teamcity["build.vcs.number"] : 0
+        buildConf = buildIsTeamCity ? project.teamcity["teamcity.buildConfName"] : project.hasProperty('systemBuildConf') ? project.systemBuildConf : 'dbg'
+        buildFullVersion = buildIsTeamCity ? buildNumber.replaceAll(buildVcsNumber, "$buildConf.$buildVcsNumber") : buildNumber
+        buildShortVersion = buildIsTeamCity ? buildNumber.replaceAll(".$buildVcsNumber", ".$buildConf") : buildNumber
+    }
+}
+
+group 'sfnn'
+version = project.ext.buildFullVersion
+
+println "project.ext.buildNumber = $project.ext.buildNumber"
+println "project.ext.buildVcsNumber = $project.ext.buildVcsNumber"
+println "project.ext.buildConf = $project.ext.buildConf"
+
+dependencies {
+}
+
+configurations {
+    published
+    external_dependencies
+}
+
+configurations.external_dependencies.resolutionStrategy.dependencySubstitution {
+    substitute group('bouncycastle') with group('org.bouncycastle')
+}
+
+artifactory {
+    contextUrl = "${artifactory_contextUrl}"   //The base Artifactory URL if not overridden by the publisher/resolver
+    publish {
+        repository {
+            repoKey = 'libs-snapshot-local'
+            username = "${artifactory_user}"
+            password = "${artifactory_password}"
+            maven = true
+        }
+        defaults {
+            publications('mavenJava')
+            publishArtifacts = true
+        }
+    }
+    resolve {
+        repository {
+            //repoKey = 'libs-release'
+            repoKey = 'egis-otb-kontur-p-src'
+            maven = true
+        }
+    }
+    clientConfig.timeout = 600
+}
+
+task allDeps {
+    doLast {
+        println "All Dependencies:"
+        allprojects.each { p ->
+            println()
+            println " $p.name ".center(60, '*')
+            println()
+            p.configurations.all.findAll { !it.allDependencies.empty }.each { c ->
+                println " ${c.name} ".center(60, '-')
+                c.allDependencies.each { dep ->
+                    println "$dep.group:$dep.name:$dep.version"
+                }
+                println "-" * 60
+            }
+        }
+    }
+}
+
+subprojects {
+    task listAllDependencies(type: DependencyReportTask) {}
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '4.0' //version required
+}
